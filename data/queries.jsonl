@@ -1,0 +1,5 @@
+{"qid":"q001","query":"进程和线程的区别 资源分配 调度单位","gold":[{"doc":"os-001","para":1}],"type":"概念"}
+{"qid":"q002","query":"时间片轮转调度 时间片过大或过小有什么影响","gold":[{"doc":"os-001","para":2}],"type":"概念"}
+{"qid":"q003","query":"死锁产生的四个必要条件 循环等待","gold":[{"doc":"os-001","para":3}],"type":"概念"}
+{"qid":"q004","query":"TLB 命中率 有效访问时间 EAT 计算","gold":[{"doc":"os-002","para":2}],"type":"计算"}
+{"qid":"q005","query":"Belady 异常 出现在哪种页面置换算法","gold":[{"doc":"os-002","para":3}],"type":"概念"}

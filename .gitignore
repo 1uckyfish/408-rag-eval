@@ -1,0 +1,11 @@
+# 语料含教材原文，不公开
+data/corpus/*
+!data/corpus/.keep
+data/raw/
+
+# 实验中间产物
+results/emb_cache/
+results/*.npz
+__pycache__/
+*.pyc
+.venv/
