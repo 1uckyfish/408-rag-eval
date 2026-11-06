@@ -88,7 +88,8 @@ dense 与 rerank 降级为"提前做完才做"（见 docs/01 末节）。**小�
 - [x] 本地环境方案定稿：`docs/07-本地环境.md`（Windows venv + CPU torch + bge-small，可选 GPU）
 - [x] `src/check_local_env.py` 环境自检脚本
 - [x] 真题题库：2009–2021 共 159 道 OS 题（选择 130 / 综合 29）进 `data/raw/exam.md`，`check_exam.py` 通过（2026-11-04）
-- [ ] W1 数据（120 条 query + gold）　← 现在这里（下一步：把 159 道题改写成检索式 query 并标 gold）
+- [x] 检索式 query：`data/queries.jsonl` 120 条（概念 53 / 计算 44 / 综合 23），`check_queries.py --min 120` 通过（2026-11-06）
+- [ ] W1 数据补全（gold 段落 + 语料 15 篇）　← 现在这里（下一步：整理语料，再给 120 条 query 标 gold）
 - [ ] W2 网格 + 热力图
 - [ ] W3 失败分析 + README
 - [ ] 可选：dense 单点对比 / rerank
