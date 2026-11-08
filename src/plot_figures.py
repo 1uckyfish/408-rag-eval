@@ -1,0 +1,181 @@
+"""出图：热力图、recall 与 chunk 数的关系、按题型拆分、recall@k 曲线。
+
+数据从当前语料 + queries.jsonl 现算（不依赖旧 CSV），保证图与代码一致。
+
+用法：
+    py -3 src/plot_figures.py
+    py -3 src/plot_figures.py --outdir results
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import matplotlib                                    # noqa: E402
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt                      # noqa: E402
+from matplotlib import font_manager                  # noqa: E402
+import numpy as np                                   # noqa: E402
+
+from eval import load_corpus, load_queries, build_index   # noqa: E402
+from metrics import recall_at_k, mrr_at_k                  # noqa: E402
+
+SIZES = [128, 256, 512, 1024]
+OVERLAPS = [0, 64]
+TYPES = ["概念", "计算", "综合"]
+
+for _s in (sys.stdout, sys.stderr):
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(encoding="utf-8", errors="replace")
+
+
+def setup_cjk_font() -> str:
+    """挑一个能显示中文的字体，返回字体名。"""
+    candidates = ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
+                  "C:/Windows/Fonts/msyhbd.ttc", "C:/Windows/Fonts/simsun.ttc"]
+    for path in candidates:
+        if os.path.exists(path):
+            font_manager.fontManager.addfont(path)
+            name = font_manager.FontProperties(fname=path).get_name()
+            plt.rcParams["font.family"] = name
+            plt.rcParams["axes.unicode_minus"] = False
+            return name
+    return ""
+
+
+def measure(docs, queries, sizes=SIZES, overlaps=OVERLAPS, kmax=5):
+    """返回 {(size, overlap): {"chunks": n, "recall@k": {k: v}, "rows": [...]}}。"""
+    out = {}
+    for size in sizes:
+        for ov in overlaps:
+            chunks, index = build_index(docs, size, ov)
+            rows = []
+            for q in queries:
+                gold = {(g["doc"], g["para"]) for g in q.get("gold", [])}
+                hits = index.search(q["query"], top_k=kmax)
+                ranked = [chunks[i]["covered"] for i, _ in hits]
+                rows.append({
+                    "qid": q["qid"],
+                    "type": q.get("type", ""),
+                    "ranked": ranked,
+                    "gold": gold,
+                })
+            rk = {k: np.mean([recall_at_k(r["ranked"], r["gold"], k) for r in rows])
+                  for k in range(1, kmax + 1)}
+            out[(size, ov)] = {
+                "chunks": len(chunks),
+                "recall@k": rk,
+                "rows": rows,
+                "mrr": float(np.mean([mrr_at_k(r["ranked"], r["gold"], kmax) for r in rows])),
+            }
+            print(f"size={size:<5} overlap={ov:<3} chunks={len(chunks):<4} "
+                  f"recall@5={rk[5]:.4f} recall@1={rk[1]:.4f}")
+    return out
+
+
+def plot_heatmap(res, outdir):
+    grid = np.array([[res[(s, o)]["recall@k"][5] for o in OVERLAPS] for s in SIZES])
+    fig = plt.figure(figsize=(11, 4.6))
+    ax1 = fig.add_subplot(1, 2, 1)
+    im = ax1.imshow(grid, cmap="viridis", vmin=0.6, vmax=1.0, aspect="auto")
+    ax1.set_xticks(range(len(OVERLAPS)), [f"overlap={o}" for o in OVERLAPS])
+    ax1.set_yticks(range(len(SIZES)), [f"size={s}" for s in SIZES])
+    for i in range(len(SIZES)):
+        for j in range(len(OVERLAPS)):
+            v = grid[i, j]
+            ax1.text(j, i, f"{v:.3f}\n({res[(SIZES[i], OVERLAPS[j])]['chunks']} chunks)",
+                     ha="center", va="center", color="white" if v < 0.92 else "black", fontsize=9)
+    ax1.set_title("recall@5：size × overlap（格内为 chunk 数）")
+    fig.colorbar(im, ax=ax1, fraction=0.046, pad=0.04)
+
+    ax2 = fig.add_subplot(1, 2, 2)
+    for ov in OVERLAPS:
+        xs = [res[(s, ov)]["chunks"] for s in SIZES]
+        ys = [res[(s, ov)]["recall@k"][5] for s in SIZES]
+        ax2.plot(xs, ys, "o-", label=f"overlap={ov}（点自左向右 size=128/256/512/1024）")
+    ax2.axhline(0.8, ls="--", c="gray", lw=1)
+    ax2.text(ax2.get_xlim()[0], 0.805, "G1 上沿 0.8", fontsize=8, color="gray", ha="left")
+    ax2.set_xlabel("chunk 总数（越少越容易命中）")
+    ax2.set_ylabel("recall@5")
+    ax2.set_title("recall@5 随 chunk 数上升 = 天花板效应")
+    ax2.grid(alpha=0.3)
+    ax2.legend()
+    fig.tight_layout()
+    path = os.path.join(outdir, "fig1_heatmap.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"已写出 {path}")
+
+
+def plot_type_recall(res, outdir, size=512, ov=0):
+    rows = res[(size, ov)]["rows"]
+    vals = [np.mean([r["recall"] if "recall" in r else recall_at_k(r["ranked"], r["gold"], 5)
+                     for r in rows if r["type"] == t]) for t in TYPES]
+    ns = [sum(1 for r in rows if r["type"] == t) for t in TYPES]
+    overall = np.mean([recall_at_k(r["ranked"], r["gold"], 5) for r in rows])
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.0))
+    labels = [f"{t}\n(n={n})" for t, n in zip(TYPES, ns)]
+    bars = ax.bar(labels, vals, color=["#4c72b0", "#dd8452", "#55a868"])
+    ax.axhline(overall, ls="--", c="gray", lw=1, label=f"总体 {overall:.3f}")
+    ax.legend(loc="lower right", fontsize=9)
+    for b, v in zip(bars, vals):
+        ax.text(b.get_x() + b.get_width() / 2, v + 0.01, f"{v:.3f}", ha="center", fontsize=10)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("recall@5")
+    ax.set_title(f"分题型 recall@5（size={size}, overlap={ov}）")
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    path = os.path.join(outdir, "fig0_type_recall.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"已写出 {path}")
+
+
+def plot_recall_vs_k(res, outdir):
+    fig, ax = plt.subplots(figsize=(6.4, 4.0))
+    for size in [256, 512, 1024]:
+        ks = list(range(1, 6))
+        ys = [res[(size, 0)]["recall@k"][k] for k in ks]
+        ax.plot(ks, ys, "o-", label=f"size={size}（{res[(size, 0)]['chunks']} chunks）")
+    ax.set_xlabel("k")
+    ax.set_ylabel("recall@k")
+    ax.set_title("同一配置下 recall 随 k 的变化（k 越小越有区分度）")
+    ax.set_xticks(range(1, 6))
+    ax.grid(alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    path = os.path.join(outdir, "fig2_recall_vs_k.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"已写出 {path}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--corpus", default="data/corpus")
+    ap.add_argument("--queries", default="data/queries.jsonl")
+    ap.add_argument("--outdir", default="results")
+    args = ap.parse_args()
+
+    name = setup_cjk_font()
+    print(f"中文字体：{name or '未找到（图里的中文会变成方框）'}")
+    os.makedirs(args.outdir, exist_ok=True)
+
+    docs = load_corpus(args.corpus)
+    queries = load_queries(args.queries)
+    print(f"语料 {len(docs)} 篇 / {sum(len(t) for t in docs.values())} 字，query {len(queries)} 条\n")
+
+    res = measure(docs, queries)
+    plot_heatmap(res, args.outdir)
+    plot_type_recall(res, args.outdir)
+    plot_recall_vs_k(res, args.outdir)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

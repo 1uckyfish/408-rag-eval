@@ -40,17 +40,47 @@ MD_PATTERNS = [
 BAD_PHRASES = ["本节", "如下图所示", "如上图", "考纲要求", "选项", "（　）", "____"]
 MIN_CHARS, MAX_CHARS = 800, 3000
 MIN_PARA, MAX_PARA_LEN = 100, 400
+NGRAM = 13
+NEAR_DUP = 0.5
+
+
+def ngrams(text: str, n: int = NGRAM) -> set[str]:
+    s = re.sub(r"\s", "", text)
+    return {s[i:i + n] for i in range(max(0, len(s) - n + 1))}
+
+
+def jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    inter = len(a & b)
+    return inter / (len(a) + len(b) - inter)
+
+
+def near_duplicate_pairs(paras: list[tuple[str, int, str]], threshold: float) -> list[tuple[float, str, int, str, int]]:
+    """字符 n-gram Jaccard 近似重复检测；paras = [(doc, idx, text)]。"""
+    grams = [ngrams(t) for _, _, t in paras]
+    out = []
+    for i in range(len(paras)):
+        for j in range(i + 1, len(paras)):
+            sim = jaccard(grams[i], grams[j])
+            if sim >= threshold:
+                out.append((sim, paras[i][0], paras[i][1], paras[j][0], paras[j][1]))
+    out.sort(reverse=True)
+    return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-files", type=int, default=1)
+    ap.add_argument("--near-dup", type=float, default=NEAR_DUP,
+                    help="近似重复阈值（字符 13-gram Jaccard），0 表示关闭")
     args = ap.parse_args()
 
     files = sorted(CORPUS.glob("*.md"))
     errors: list[str] = []
     rows = []
     para_index: dict[str, list[str]] = {}
+    all_paras: list[tuple[str, int, str]] = []
 
     if len(files) < args.min_files:
         errors.append(f"语料只有 {len(files)} 篇，少于要求的 {args.min_files} 篇")
@@ -85,6 +115,7 @@ def main() -> int:
                     f"段落重复：{path.name} 第 {i} 段与 {para_index[key][0]} 第 {para_index[key][1]} 段开头相同"
                 )
             para_index.setdefault(key, (path.name, i))
+            all_paras.append((path.stem, i, p))
         lengths = [len(re.sub(r"\s", "", p)) for p in paras]
         rows.append((path.name, chars, len(paras), min(lengths), max(lengths)))
 
@@ -95,6 +126,15 @@ def main() -> int:
     total_chars = sum(r[1] for r in rows)
     total_paras = sum(r[2] for r in rows)
     print(f"\n合计 {len(rows)} 篇、{total_chars} 字、{total_paras} 段" + (f"（平均每篇 {total_chars // max(len(rows),1)} 字）" if rows else ""))
+
+    if args.near_dup > 0:
+        near = near_duplicate_pairs(all_paras, args.near_dup)
+        print(f"\n近似重复检测（{NGRAM}-gram Jaccard ≥ {args.near_dup}）：{len(near)} 对")
+        for sim, d1, i1, d2, i2 in near[:8]:
+            print(f"  ! {sim:.2f}  {d1} p{i1}  ≈  {d2} p{i2}")
+            errors.append(f"近似重复 {sim:.2f}：{d1} p{i1} 与 {d2} p{i2}（改写同一段会污染检索）")
+        if len(near) > 8:
+            print(f"  … 其余 {len(near) - 8} 对略")
 
     if errors:
         print(f"\n发现 {len(errors)} 个问题：")
