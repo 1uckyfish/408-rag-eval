@@ -92,8 +92,9 @@ dense 与 rerank 降级为"提前做完才做"（见 docs/01 末节）。**小�
 - [x] W1 数据补全：语料 18 篇 / 166 段（`check_corpus.py`），120 条 query 的 gold 全部标完（1 段 94 / 2 段 24 / 3 段 2），`check_queries.py --min 120` 通过（2026-11-07）
 - [x] W1 基线：BM25 512/0 recall@5 = 0.9306（75 chunks）→ 判定为语料规模造成的天花板（2026-11-07）
 - [x] W2 语料扩张：18 → **36 篇 / 306 段 / 6.8 万字**，近重复 0 对；512/0 recall@5 回落到 **0.8403**（160 chunks），recall@1 0.6264 → 0.5264（2026-11-08）
-- [x] W2 出图：`results/fig0_type_recall.png`、`fig1_heatmap.png`、`fig2_recall_vs_k.png`（36 篇数据，`plot_figures.py` 现算）（2026-11-08）
-- [x] W2 出图：分题型 recall、size×overlap 热力图 + recall vs chunk 数、recall@k 曲线（`results/fig0/1/2*.png`，`py -3 src\plot_figures.py`）（2026-11-08）
-- [ ] W2 热力图结论句 + dense 单点对比　← 现在这里
+- [x] W2 出图：分题型 recall、size×overlap 热力图 + recall vs chunk 数、recall@k 曲线、recall vs P95 帕累托（`results/fig0..fig3*.png`，`py -3 src\plot_figures.py`）（2026-11-08）
+- [x] W2 环境：`.venv` + torch 2.15.0+cpu + sentence-transformers 6.2.0，bge-small-zh-v1.5（512 维）跑通（2026-11-08）
+- [x] W2 Q2 对照：dense 512/0 recall@5 **0.760 / P95 16ms** vs BM25 **0.840 / 1.5ms** —— BM25 又准又快，不换（2026-11-08）
+- [ ] W2 热力图结论句 + 失败分析　← 现在这里
 - [ ] W3 失败分析 + README
-- [ ] 可选：dense 单点对比 / rerank
+- [ ] 可选：rerank 单点

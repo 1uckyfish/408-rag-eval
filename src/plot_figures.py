@@ -155,6 +155,69 @@ def plot_recall_vs_k(res, outdir):
     print(f"已写出 {path}")
 
 
+def plot_pareto(outdir):
+    """recall@5 vs P95 延迟（回答 Q3：多花的延迟值不值）。读 CSV，不现算。"""
+    import csv as _csv
+
+    bm, dn = [], []
+    grid = os.path.join(outdir, "grid_bm25.csv")
+    if os.path.exists(grid):
+        with open(grid, encoding="utf-8-sig") as f:
+            for r in _csv.DictReader(f):
+                bm.append((float(r["p95_ms"]), float(r["recall"]),
+                           f"bm25 {r['size']}/{r['overlap']}"))
+
+    for fn, tag in [("dense_256_0.csv", "dense 256/0"), ("dense_512_0.csv", "dense 512/0")]:
+        p = os.path.join(outdir, fn)
+        if not os.path.exists(p):
+            continue
+        with open(p, encoding="utf-8-sig") as f:
+            rows = list(_csv.DictReader(f))
+        rec = np.mean([float(r["recall"]) for r in rows])
+        lat = sorted(float(r["latency_ms"]) for r in rows)
+        p95 = lat[min(len(lat) - 1, int(0.95 * len(lat)))]
+        dn.append((p95, rec, tag))
+
+    if not bm and not dn:
+        print("跳过图 3：缺 results/grid_bm25.csv 或 dense CSV")
+        return
+
+    fig, ax = plt.subplots(figsize=(7.6, 4.8))
+    seen = {}
+    if bm:
+        ax.scatter([p for p, _, _ in bm], [r for _, r, _ in bm], s=70, c="#4c72b0",
+                   label="BM25（8 组配置）", zorder=3)
+        for p, r, lab in bm:
+            if lab.endswith("1024/64"):     # 与 1024/0 几乎重合，合并标注
+                continue
+            shown = lab + ",64" if lab.endswith("1024/0") else lab
+            seen[lab] = seen.get(lab, 0) + 1
+            dy = -13 if seen[lab] % 2 == 0 else 10
+            ax.annotate(shown, (p, r), textcoords="offset points", xytext=(7, dy),
+                        fontsize=8, color="#4c72b0")
+    if dn:
+        ax.scatter([p for p, _, _ in dn], [r for _, r, _ in dn], s=110, marker="s", c="#c44e52",
+                   label="dense（bge-small-zh-v1.5）", zorder=4)
+        for p, r, lab in dn:
+            ax.annotate(lab, (p, r), textcoords="offset points", xytext=(8, 6),
+                        fontsize=8, color="#c44e52")
+
+    ax.set_xscale("log")
+    ax.set_xticks([1, 2, 5, 10, 20, 50])
+    ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    ax.set_xlabel("P95 延迟 / ms（对数轴，单机 CPU 测量）")
+    ax.set_ylabel("recall@5")
+    ax.set_title("recall@5 vs P95：BM25 在更低的延迟上拿到更高的召回")
+    ax.grid(alpha=0.3, which="both")
+    ax.margins(x=0.12, y=0.12)
+    ax.legend(loc="lower left", fontsize=9)
+    fig.tight_layout()
+    path = os.path.join(outdir, "fig3_pareto.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"已写出 {path}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", default="data/corpus")
@@ -174,6 +237,7 @@ def main() -> int:
     plot_heatmap(res, args.outdir)
     plot_type_recall(res, args.outdir)
     plot_recall_vs_k(res, args.outdir)
+    plot_pareto(args.outdir)
     return 0
 
 
