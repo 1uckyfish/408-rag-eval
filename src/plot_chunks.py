@@ -1,4 +1,4 @@
-"""第⑧步进阶版：热力图 + 格子里加 chunk 数。
+﻿"""第⑧步进阶版：热力图 + 格子里加 chunk 数。
 
 和 src/plot.py 的差别只有三处（下面用 ← 标出）：
     1. 读 CSV 时多取一列 chunks
@@ -23,7 +23,7 @@ plt.rcParams["axes.unicode_minus"] = False
 SIZES = [128, 256, 512, 1024]
 OVERLAPS = [0, 64]
 CSV_PATH = "results/grid_bm25.csv"
-OUT_PATH = "results/fig_heatmap_chunks.png"
+OUT_PATH = "results/showcase/fig_heatmap_chunks.png"
 
 
 def load_grid(path):

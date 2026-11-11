@@ -1,4 +1,4 @@
-"""
+﻿"""
 用法：
     py -3 src/plot.py
 """
@@ -18,7 +18,7 @@ plt.rcParams["axes.unicode_minus"] = False
 SIZES = [128, 256, 512, 1024]
 OVERLAPS = [0, 64]
 CSV_PATH = "results/grid_bm25.csv"
-OUT_PATH = "results/fig_heatmap_hand.png"
+OUT_PATH = "results/showcase/fig_heatmap_hand.png"
 
 
 def load_grid(path):

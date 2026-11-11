@@ -1,4 +1,4 @@
-"""单配置评测：切分 -> 建索引 -> 检索 -> 打分。
+﻿"""单配置评测：切分 -> 建索引 -> 检索 -> 打分。
 
 用法：
     python3 src/eval.py --corpus data/corpus --queries data/queries.jsonl \
@@ -96,8 +96,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", default="data/corpus")
     ap.add_argument("--queries", default="data/queries.jsonl")
-    ap.add_argument("--size", type=int, default=300)
-    ap.add_argument("--overlap", type=int, default=60)
+    ap.add_argument("--size", type=int, default=512)
+    ap.add_argument("--overlap", type=int, default=0)
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--out", default="")
     args = ap.parse_args()

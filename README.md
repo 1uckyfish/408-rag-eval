@@ -1,6 +1,6 @@
-# 408-RAG-Eval：用 408 真题评测 RAG 的检索策略
+﻿# 408-RAG-Eval：用 408 真题评测 RAG 的检索策略
 
-> 一句话：**把《操作系统》知识库 + 408 历年真题做成一个可复现的检索评测台，用网格实验回答"chunk 到底该切多大、rerank 到底值不值"。**
+> 一句话：**把《操作系统》知识库 + 408 历年真题做成一个可复现的检索评测台，用网格实验回答"chunk 该切多大、dense 该不该换、瓶颈在召回还是在排序"。**
 
 这不是一个 RAG demo，是一个**测量项目**。所有的价值在 `results/` 里的表格和图，不在界面。
 
@@ -12,10 +12,25 @@
 |---|---|---|
 | Q1 | chunk size × overlap 怎么选？教材场景下默认的 512/0 是不是最优？ | 热力图 + 结论句 |
 | Q2 | dense（向量）检索比 BM25 强多少？差在哪些题上？ | 对比表 + 失败案例分析 |
-| Q3 | rerank 把 recall 提多少、延迟涨多少？值不值？ | 帕累托图（recall vs P95 延迟） |
+| Q3 | rerank 把 recall 提多少、延迟涨多少？值不值？ | **做了单点：负收益**（recall@5 −2.6pt、P95 ×1483），原因分析见 `docs/04` |
 
-**最终结论模板**（做完再填）：
-> 在 200 条 408 真题上，chunk=**X** / overlap=**Y** 的 recall@5 比默认 512/0 高 **Z** 个百分点，P95 延迟只增加 **W** ms；rerank 带来 **+A** recall 但代价是 **+B** ms，在 5 条结果返回的场景下**不划算/划算**。
+**结论（2026-11-11 实测：36 篇语料 / 306 段 / 120 条 query / 8 组配置）**
+
+> **Q1 切分**：`size=512` 就是该选的档位，overlap 取 0 或 64 差异都在噪声内（512/0 作为默认值足够）。
+> recall@5 确实随 size 一路涨到 0.9292（1024/64），但**这是假象**——chunk 总数从 591 掉到 93，top-5 占全库的比例从 0.8% 升到 5.4%，分母越来越小自然容易命中。换成更严的 recall@1 就露馅了：512 见顶 **0.5264**，1024 两档都回落（0.5028 / 0.4903）。overlap=64 在 512 上只 +3.9pt（0.8403 → 0.8792），相当于 4–5 道题，**样本量不足以下"overlap 有用"的结论**。
+>
+> **Q2 dense vs BM25**：BM25 全面胜出，**没有理由换**。recall@5 **0.8403 vs 0.7600**、MRR **0.6830 vs 0.5590**、P95 **1.5ms vs 15.9ms**（慢 10 倍还更不准）。原因是 query 是术语密集的短句、语料又按考点组织，字符 bigram 恰好能吃到关键词；换成真实用户的长问句，这个结论未必成立。
+>
+> **Q3 rerank**：**做了，是负收益**——这条负结果比"没做"更有信息量。BM25 top-20 交给 `bge-reranker-base` 重排后，recall@5 **0.8403 → 0.8139**（−2.6pt）、MRR **0.6829 → 0.6494**（−3.3pt）、recall@1 0.5264 → 0.4806（−4.6pt），而 P95 从 **2.69 ms 涨到 3 988 ms**（×1483）。逐题看是涨 8 / 跌 14 / 平 98。
+>
+> 为什么立项时觉得该做：120 条里 **37 条"召回到了却没排第一"**（桶 B），只有 **16 条完全没召回**（桶 A）——瓶颈确实在排序；单纯清洗 query 编号噪声只换来 +0.83pt，也说明改 query 没用。但**"该重排"不等于"这个 reranker 会重排对"**：它按通用语义相关性打分，而我们要的是"这一段能不能答这道题"。三个可能原因（打分单元是 chunk 而 gold 是段、通用 reranker 与教材式密集术语不匹配、512 token 截断）与三条下一步验证写在 `docs/04` 的 Q3 节。
+
+**读这三个数的前提**（面试被追问时的诚实边界）：
+
+- 延迟**不可复现**：同机同代码两次跑差 3.3 倍（2.81ms vs 9.38ms），所以只讲"个位数 ms 对十几 ms"，不讲小数；
+- 语料是**按 408 大纲自撰**的 36 篇（规避教材版权），措辞比真教材干净，BM25 可能偏乐观；
+- gold 是我自己标的，**隔日盲标一致率 40%**，但 `recall@5` 只差 2.5pt（主结论稳），`MRR` 差 16.7pt（所以对外只讲 recall@5）。
+
 
 ---
 
@@ -33,24 +48,36 @@
 │   ├── 05-方法问答.md       三层追问 15 问 + 答题要点
 │   ├── 06-失败案例.md       6 条具体案例 + A/B/C 三类分布 + 消融实验
 │   ├── 07-本地环境.md       venv、torch、模型下载的踩坑记录
-│   ├── 08-真题收集.md       159 题真题怎么从 PDF 变成 exam.md
-│   └── 09-执行清单.md       11 步线性清单与三个 Gate
-├── src/
+│   ├── 08-真题收集.md       195 题真题怎么从 PDF 变成 exam.md
+│   ├── 09-执行清单.md       11 步线性清单与三个 Gate
+│   └── 10-口径与细节笔记.md  滚动记录口径细节（将来合并进 05）
+├── src/                   26 个脚本 / 约 2 200 行（核心链零依赖）
 │   ├── chunker.py          切分（零依赖）
 │   ├── bm25.py             字符 bigram BM25（零依赖）
 │   ├── metrics.py          recall@k / MRR / nDCG（零依赖）
 │   ├── eval.py             单次评测入口（零依赖）
 │   ├── run_grid.py         8 组网格（零依赖）
-│   ├── ask.py              当检索器用：问一句，打印 top-k 段落
+│   ├── ask.py              当检索器用：问一句，打印 top-k 段落（--cite 出引用）
 │   ├── dense_eval.py       dense 检索（需要 .venv）
-│   ├── find_failures.py    失败案例挖掘
+│   ├── find_failures.py    失败案例挖掘（A/B/C 分桶）
+│   ├── ablation_idnoise.py 消融：剥掉 query 里的进程编号
 │   ├── plot_figures.py     图 0–3 一键出图
-│   └── plot_recall1.py     图 4：recall@1 vs recall@5 拐点
+│   ├── plot_recall1.py     图 4：recall@1 vs recall@5 拐点
+│   ├── plot_delta.py       图 5：最优 vs 默认的逐题差值
+│   ├── plot.py / plot_chunks.py  手写版热力图（学习用）
+│   ├── check_corpus.py / check_queries.py / check_exam.py   三道数据校验
+│   ├── suggest_gold.py / apply_gold.py    gold 候选与回填
+│   ├── make_consistency_sample.py / check_consistency.py    一致率抽检
+│   ├── show_paras.py       打印某篇的段落序号（标注用）
+│   ├── render_exam.py      扫描版 PDF → PNG
+│   └── merge_parts.py / merge_queries.py   分片合并
+├── app.py                  Streamlit 演示外壳（需 .venv，只包装不产结论）
+├── requirements-demo.txt   演示页依赖（核心评测不需要）
 ├── data/
 │   ├── corpus/os-01…36.md  36 篇 / 306 段 / 6.8 万字（按 408 大纲自撰）
-│   ├── raw/exam.md         159 道真题（2009–2021，不进公开仓库）
+│   ├── raw/exam.md         195 道真题（2009–2024，不进公开仓库）
 │   └── queries.jsonl       120 条检索式 query + gold 段落
-└── results/                CSV 与图（fig0–fig5）
+└── results/                CSV 与图（fig0–fig5 + 两份手写版）
 ```
 
 ## 3. 现在就能用
@@ -60,7 +87,7 @@
 ### 3.1 当检索器用：问一句，看命中的段落
 
 ```powershell
-cd "C:\Users\W2490\Desktop\文件夹\项目"
+cd <项目根目录>   # 例：cd "D:\code\408-rag-eval"
 py -3 src\ask.py "页表项 2B、页大小 2^10B 时页目录最少多少项"
 py -3 src\ask.py "进程和线程的区别是什么" --k 3 --full
 py -3 src\ask.py "死锁的四个必要条件" --cite   # 引用式回答：段落原文 + 出处 + 相关度
@@ -158,7 +185,7 @@ dense 与 rerank 降级为"提前做完才做"（见 docs/01 末节）。**小�
 - [x] 选定 3 周精简版，日期落到 11/22（2026-11-03）
 - [x] 本地环境方案定稿：`docs/07-本地环境.md`（Windows venv + CPU torch + bge-small，可选 GPU）
 - [x] `src/check_local_env.py` 环境自检脚本
-- [x] 真题题库：2009–2021 共 159 道 OS 题（选择 130 / 综合 29）进 `data/raw/exam.md`，`check_exam.py` 通过（2026-11-04）
+- [x] 真题题库：2009–2024 共 195 道 OS 题（选择 160 / 综合 35）进 `data/raw/exam.md`，`check_exam.py` 通过（2026-11-04）
 - [x] 检索式 query：`data/queries.jsonl` 120 条（概念 53 / 计算 44 / 综合 23），`check_queries.py --min 120` 通过（2026-11-06）
 - [x] W1 数据补全：语料 18 篇 / 166 段（`check_corpus.py`），120 条 query 的 gold 全部标完（1 段 94 / 2 段 24 / 3 段 2），`check_queries.py --min 120` 通过（2026-11-07）
 - [x] W1 基线：BM25 512/0 recall@5 = 0.9306（75 chunks）→ 判定为语料规模造成的天花板（2026-11-07）
@@ -166,7 +193,7 @@ dense 与 rerank 降级为"提前做完才做"（见 docs/01 末节）。**小�
 - [x] W2 出图：分题型 recall、size×overlap 热力图 + recall vs chunk 数、recall@k 曲线、recall vs P95 帕累托（`results/fig0..fig3*.png`，`py -3 src\plot_figures.py`）（2026-11-08）
 - [x] W2 环境：`.venv` + torch 2.15.0+cpu + sentence-transformers 6.2.0，bge-small-zh-v1.5（512 维）跑通（2026-11-08）
 - [x] W2 Q2 对照：dense 512/0 recall@5 **0.760 / P95 16ms** vs BM25 **0.840 / 1.5ms** —— BM25 又准又快，不换（2026-11-08）
-- [x] W2 补图：recall@1 拐点（512 见顶）、最优 vs 默认的逐题差值、手写版热力图两张（`fig4`、`fig5`、`fig_heatmap_hand/chunks`）（2026-11-09）
+- [x] W2 补图：recall@1 拐点（512 见顶）、最优 vs 默认的逐题差值、手写版热力图两张（练习用，在 `results/showcase/`）（2026-11-09）
 - [x] W3 失败分析：A 16 / B 37 / C 4，**瓶颈在排序不在召回**；6 条案例写进 `docs/06`；编号噪声消融 +0.83pt（2026-11-09）
 - [x] 标注一致性抽检：20 条藏答案重标，严格一致 40%，但 recall@5 只差 2.5pt、MRR 差 16.7pt（`docs/04`）（2026-11-10）
 - [x] 检索入口与演示：`src/ask.py`（含 `--cite` 引用式回答）、`app.py` Streamlit 外壳（2026-11-10）
@@ -220,3 +247,9 @@ py -3 src\plot_delta.py                     # results/fig5_delta_distribution.pn
 - `data/raw/`（真题 PDF、`exam.md`）**不入库**：扫描原卷有版权，只在本地。所以干净 clone 里跑 `py -3 src\check_exam.py` 会报"找不到 data/raw/exam.md"，这是预期行为。
 - 派生的 `data/queries.jsonl`（120 条检索式 query）**已入库**，评测不依赖真题原件。
 - `app.py` 需要 `.venv` 与 `requirements-demo.txt`，见 §3.4。
+
+---
+
+**在线仓库**：<https://github.com/1uckyfish/408-rag-eval>（2026-11-11 首次公开，32 次提交、101 个文件）
+
+`data/raw/` 与 `data/cache/` 不入库：前者是真题 PDF/转录的版权考虑，后者是可再生的 embedding 缓存。因此 clone 下来后 `check_exam.py` 会提示"找不到 exam.md"，这是预期行为，不影响评测链（`queries.jsonl` 已入库）。
