@@ -1,0 +1,5 @@
+# 演示页（可选）依赖 —— 只有 app.py 需要，核心评测链不用这些。
+# 安装：.\.venv\Scripts\python.exe -m pip install -r requirements-demo.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+streamlit==1.67.0
+pandas==3.1.1
+pyarrow==26.0.1

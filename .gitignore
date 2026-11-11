@@ -1,9 +1,11 @@
-# 语料含教材原文，不公开
-data/corpus/*
-!data/corpus/.keep
+# 语料：按 408 大纲自撰、不含教材原文，必须入库 —— 否则 clone 下来跑不了
+# （2026-11-11 冷启动实测：被忽略时 eval.py 直接 FileNotFoundError）
+
+# 真题题库与 PDF：扫描件/原卷有版权，只留本地，不入库
 data/raw/
 
-# 实验中间产物
+# 中间产物与缓存
+data/cache/
 results/emb_cache/
 results/*.npz
 __pycache__/
