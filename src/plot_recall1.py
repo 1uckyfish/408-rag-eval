@@ -1,4 +1,4 @@
-"""第⑧步进阶二：recall@1 与 recall@5 的取舍（拐点图）。
+"""recall@1 与 recall@5 的取舍（拐点图）。
 
 为什么要单独画 recall@1：
     recall@5 随 size 单调上升（chunk 越大候选越少，越容易覆盖 gold），

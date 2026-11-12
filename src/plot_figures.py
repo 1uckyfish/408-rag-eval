@@ -187,23 +187,26 @@ def plot_pareto(outdir):
     if bm:
         ax.scatter([p for p, _, _ in bm], [r for _, r, _ in bm], s=70, c="#4c72b0",
                    label="BM25（8 组配置）", zorder=3)
-        for p, r, lab in bm:
+        # 手工错开：同一 size 的两档 y 差很小，靠上下偏移分开
+        dy_map = {"128/0": -16, "128/64": 9, "256/0": 9, "256/64": -16,
+                  "512/0": 9, "512/64": -16}
+        for idx, (p, r, lab) in enumerate(bm):
             if lab.endswith("1024/64"):     # 与 1024/0 几乎重合，合并标注
                 continue
             shown = lab + ",64" if lab.endswith("1024/0") else lab
-            seen[lab] = seen.get(lab, 0) + 1
-            dy = -13 if seen[lab] % 2 == 0 else 10
+            dy = dy_map.get(shown, 9 if idx % 2 == 0 else -16)
             ax.annotate(shown, (p, r), textcoords="offset points", xytext=(7, dy),
                         fontsize=8, color="#4c72b0")
     if dn:
         ax.scatter([p for p, _, _ in dn], [r for _, r, _ in dn], s=110, marker="s", c="#c44e52",
                    label="dense（bge-small-zh-v1.5）", zorder=4)
         for p, r, lab in dn:
-            ax.annotate(lab, (p, r), textcoords="offset points", xytext=(8, 6),
-                        fontsize=8, color="#c44e52")
+            ax.annotate(lab, (p, r), textcoords="offset points", xytext=(-8, 6),
+                        fontsize=8, color="#c44e52", ha="right")
 
     ax.set_xscale("log")
     ax.set_xticks([1, 2, 5, 10, 20, 50])
+    ax.set_xlim(right=max([p for p, _, _ in bm + dn]) * 1.55)  # 右侧留白，免得 dense 标注被裁掉
     ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
     ax.set_xlabel("P95 延迟 / ms（对数轴，单机 CPU 测量）")
     ax.set_ylabel("recall@5")
